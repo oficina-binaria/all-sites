@@ -1,58 +1,102 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# All Sites
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Página "em construção" única para vários domínios estacionados.
 
-## About Laravel
+Em vez de manter uma página por domínio, todos eles apontam para esta aplicação. Ela lê o host
+da requisição e monta na hora uma landing page personalizada, com o nome da empresa gerado a
+partir do domínio.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Para que serve
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+- Dar uma página apresentável a domínios registrados que ainda não têm site.
+- Evitar páginas de erro, telas padrão do provedor ou anúncios de estacionamento nesses domínios.
+- Permitir apontar um domínio novo sem nenhuma alteração de código: basta configurar o DNS para a
+  aplicação.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Como funciona
 
-## Learning Laravel
+A rota `/` (`App\Http\Controllers\LandingPageController`) remove o `www.` do host e transforma o
+domínio em um nome:
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+| Domínio acessado            | Nome exibido    |
+| --------------------------- | --------------- |
+| `acme.com`                  | Acme            |
+| `www.acme-solucoes.com.br`  | Acme Solucoes   |
+| `loja.nova-era.net`         | Nova Era        |
+| `blue_ocean.co.uk`          | Blue Ocean      |
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+Regras:
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+- Sufixos de dois níveis com código de país (`com.br`, `co.uk`, `net.br`…) são removidos inteiros.
+  Os demais sufixos (`.com`, `.io`…) perdem só o último rótulo.
+- Subdomínios são ignorados: o nome vem do rótulo imediatamente antes do sufixo.
+- Hífens e sublinhados viram espaços e cada palavra começa com maiúscula.
+- Domínios internacionalizados (`xn--…`) são convertidos para Unicode quando a extensão `intl`
+  está disponível.
+- Se a página for acessada por endereço IP, o nome usado é o `APP_NAME`.
 
-## Agentic Development
+A página (`resources/views/landing.blade.php`) está em português e tem suporte a tema escuro.
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+### Cache na edge
+
+A aplicação foi pensada para rodar atrás de uma CDN (a edge da Laravel Cloud), para que bots e
+visitantes dos domínios estacionados não precisem acordar o container a cada acesso:
+
+- A rota `/` fica fora do grupo de middleware `web`: não há sessão, cookies nem CSRF, e a resposta
+  não envia `Set-Cookie`.
+- `/` responde com `Cache-Control: public, max-age=300, s-maxage=86400` e ETag.
+- Qualquer outro caminho retorna 404 com `Cache-Control: public, max-age=300, s-maxage=3600`
+  (configurado em `bootstrap/app.php`).
+- `/up` é o endpoint de health check.
+
+A aplicação não usa banco de dados.
+
+## Stack
+
+- PHP 8.5 e Laravel 13
+- Tailwind CSS 4 e Vite
+- Pest para testes
+- Laravel Sail para o ambiente local (opcional)
+- Laravel Cloud em produção
+
+## Desenvolvimento
+
+Instalação (dependências, `.env`, chave da aplicação e build dos assets):
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+composer setup
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+Servidor de desenvolvimento com Vite:
 
-## Contributing
+```bash
+composer dev
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+Também dá para usar o Sail:
 
-## Code of Conduct
+```bash
+vendor/bin/sail up -d
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+Para ver a página de um domínio específico localmente, acesse com outro host, por exemplo
+adicionando `127.0.0.1 acme-solucoes.com.br` ao `/etc/hosts`.
 
-## Security Vulnerabilities
+## Testes
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+```bash
+php artisan test --compact
+```
 
-## License
+Os testes de `tests/Feature/LandingPageTest.php` cobrem a geração de nomes e os cabeçalhos de cache.
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Antes de commitar alterações em PHP, formate o código:
+
+```bash
+vendor/bin/pint --dirty
+```
+
+## Deploy
+
+A aplicação roda na Laravel Cloud. Para colocar um novo domínio no ar, adicione-o ao ambiente na
+Laravel Cloud e aponte o DNS. Nenhuma alteração de código é necessária.
